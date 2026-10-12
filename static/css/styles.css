@@ -1,0 +1,712 @@
+/* Flota AGV · banco de pruebas
+   Piel Laboratorio (fablab-tools: web/cnc/lab.css y docs/laboratorio-ui.md),
+   que es OPI (Casita, estilo One UI / Samsung Health) en claro. Lo que se
+   toma de ahi son los ESTILOS; el acomodo es de esta herramienta:
+   · arriba lo que vale para la flota (marcha, MQTT, paro)
+   · a la izquierda la cancha, a todo lo alto
+   · a la derecha un panel tipo app con menu inferior: Robots, Obstaculos y
+     Telemetria (cada pagina, mandos que no se influyen con los de otra) y
+     un boton redondo de ajustes rapidos para lo comun a los tres
+   Reglas de la piel:
+   · fondo gris claro, tarjetas blancas con filo de 1 px y sin sombra; la
+     sombra solo en lo que flota sobre la cancha
+   · radios: tarjeta 22, celda 14, campo 12, botones y selectores en pildora
+   · accion principal = pildora grafito; el rojo solo en PARO y en errores
+   · el color es dato: cada robot el suyo, verde = visto / en vivo, ambar = aviso
+   · nunca linea de color al costado; un estado va con relleno tenue, punto o
+     icono, y con texto
+   · Manrope para rotulos; Plex Mono solo para valores, reloj, trama y ejes
+   · objetivos de 44 px donde se toca con prisa; foco visible */
+
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --bg:#F3F4F6;
+  --surface:#FFFFFF;
+  --surface-2:#F5F6F8;
+  --riel:#ECEEF1;
+  --visor:#E5E7EB;
+  --filo-c:#E4E6EA;
+  --filo:0 0 0 1px var(--filo-c);
+  --flota-sombra:0 12px 32px -12px rgba(16,24,40,.22),0 2px 6px rgba(16,24,40,.06);
+
+  --ink:#111317;
+  --ink-dim:#6B6F76;
+  --ink-faint:#9CA3AF;
+  --line:#E5E7EB;
+  --line-strong:#D1D5DB;
+
+  --ok:#16A34A;
+  --aviso:#B45309;
+  --alarma:#E30613;
+  --alarma-hover:#B80510;
+  --foco:#2563EB;
+
+  --canvas-bg:#0F1013;
+
+  --font-sans:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:28px;
+  --r-w:22px; --r-celda:14px; --r-campo:12px; --r-sm:8px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --sidebar-w:400px;
+  --barra-h:56px;
+  /* Columna del rotulo en los sliders de un renglon: lo que mide el mas
+     largo, "Velocidad angular (rad/s)" con su cifra. */
+  --rotulo-w:184px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;padding:0;overflow:hidden}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+}
+button,input,select{font-family:inherit;color:inherit}
+h1,h2,h3{margin:0}
+/* El sprite de iconos: hidden no oculta un <svg> (no es un elemento HTML). */
+svg[hidden]{display:none}
+:focus-visible{outline:2px solid var(--foco);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ============================================================
+   ARMAZON
+   ============================================================ */
+.app{display:flex;flex-direction:column;height:100%}
+.body{flex:1;display:flex;flex-direction:column;min-height:0}
+.main-row{flex:1;display:flex;min-height:0}
+
+/* ---- barra: lo de toda la flota ---- */
+.barra{
+  height:var(--barra-h);flex:none;display:flex;align-items:center;gap:var(--sp-3);
+  padding:0 var(--sp-4) 0 var(--sp-5);
+}
+.barra-nombre{font-size:18px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.barra-sub{font-size:12.5px;font-weight:600;color:var(--ink-dim);white-space:nowrap}
+.barra-der{margin-left:auto;display:flex;align-items:center;gap:var(--sp-3)}
+
+/* Marcha: reloj, correr/pausar y reiniciar en una sola pildora */
+.run-group{
+  display:flex;align-items:center;gap:6px;padding:4px 4px 4px 14px;
+  background:var(--surface);border-radius:999px;box-shadow:var(--filo);
+}
+.run-timer{font-family:var(--font-mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:44px}
+
+/* ---- MQTT: el interruptor que suelta a los robots fisicos ----
+   Tamano fijo, solo el rotulo y el switch: lo que dice si esta armado es la
+   posicion del switch. El checkbox de verdad queda invisible: sigue
+   recibiendo el foco y el teclado; el switch solo lo dibuja. */
+.mqtt-enable{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;position:relative;
+  width:124px;min-height:44px;padding:0 9px 0 16px;border-radius:999px;
+  background:var(--surface);box-shadow:var(--filo);
+  font-size:13px;font-weight:800;letter-spacing:.04em;cursor:pointer;user-select:none;
+}
+.mqtt-enable input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.mqtt-enable input:checked + .switch{background:var(--ink)}
+.mqtt-enable input:checked + .switch i{transform:translateX(18px)}
+.mqtt-enable input:focus-visible + .switch{outline:2px solid var(--foco);outline-offset:2px}
+@keyframes latido{50%{opacity:.35}}
+
+/* ---- paro de emergencia ---- */
+.btn.btn-paro{
+  min-height:44px;padding:0 26px;border:0;border-radius:999px;
+  background:var(--alarma);color:#fff;font-weight:800;font-size:14px;letter-spacing:.06em;
+} /* sebs-allow: paro */
+.btn.btn-paro:hover{background:var(--alarma-hover)} /* sebs-allow: paro */
+.btn-paro:active{transform:translateY(1px)}
+/* Confirmacion visible: sin esto no hay forma de saber si el clic entro. */
+.btn-paro.disparado{animation:paro-flash .5s ease-out}
+@keyframes paro-flash{0%{background:#fff;color:var(--alarma)}100%{background:var(--alarma);color:#fff}}
+
+/* ============================================================
+   CENTRO: el visor
+   ============================================================ */
+.centro{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 0 var(--sp-3) var(--sp-3)}
+.stage-wrap{flex:1;min-height:0;display:flex}
+.stage-full{flex:1;min-width:0;position:relative;background:var(--visor);border-radius:var(--r-w);overflow:hidden}
+.view{position:absolute;inset:0;display:none}
+.view.on{display:block}
+.view canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+/* En 3D el lienzo 2D se esconde; sin esto el display:block de arriba le gana al [hidden]. */
+.view canvas[hidden]{display:none}
+.view img{display:block;width:100%;height:100%;object-fit:contain;background:var(--canvas-bg)}
+
+/* ---- todo lo que flota sobre la cancha: pildoras blancas con sombra ---- */
+.segmented{
+  display:inline-flex;gap:2px;padding:4px;border-radius:999px;background:var(--riel);
+}
+.segmented button{
+  min-height:34px;padding:0 14px;border:none;background:none;border-radius:999px;
+  font-size:13px;font-weight:600;color:var(--ink-dim);cursor:pointer;white-space:nowrap;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.segmented button:hover{color:var(--ink)}
+.segmented button.on{background:var(--surface);color:var(--ink);box-shadow:var(--filo)}
+.segmented button:disabled{cursor:not-allowed;opacity:.4}
+
+.stage-modo,.stage-vista .segmented{background:var(--surface);box-shadow:var(--flota-sombra)}
+.stage-modo button.on,.stage-vista .segmented button.on{background:var(--ink);color:#fff;box-shadow:none}
+.stage-modo{position:absolute;left:var(--sp-4);top:var(--sp-4);z-index:4}
+.stage-vista{position:absolute;right:var(--sp-4);top:var(--sp-4);z-index:4;display:flex;gap:var(--sp-2);align-items:center}
+/* display:flex le gana al [hidden] del navegador; en Real tiene que irse. */
+.stage-vista[hidden],.stage-vista .segmented[hidden]{display:none}
+
+.view .tag,.pista-3d{
+  position:absolute;bottom:var(--sp-4);z-index:2;pointer-events:none;
+  display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:999px;
+  background:var(--surface);box-shadow:var(--flota-sombra);
+  font-family:var(--font-mono);font-size:11.5px;color:var(--ink-dim);
+}
+.view .tag{left:var(--sp-4)}
+.pista-3d{right:var(--sp-4);font-family:var(--font-sans);font-weight:600}
+
+.view-empty{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:6px;color:#A3A8B0;font-size:14px;font-weight:700;
+  text-align:center;padding:var(--sp-5);
+  /* Es un cartel, no una capa interactiva: sin esto se traga cada clic
+     destinado al lienzo que tiene debajo. */
+  pointer-events:none;
+}
+/* display:flex le gana al display:none del atributo [hidden]. */
+.view-empty[hidden]{display:none}
+.view-empty span:last-child{font-size:12px;font-weight:500;color:#6B6F76}
+
+/* ---- vista 3D ---- */
+.vista-3d{position:absolute;inset:0}
+.vista-3d[hidden]{display:none}
+.vista-3d .lienzo-3d{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.vista-3d .etiquetas-3d{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.vista-3d .view-empty{background:rgba(229,231,235,.85);z-index:1;color:var(--ink-dim)}
+.etiqueta-3d{font:600 11px var(--font-mono);text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap}
+.cota-3d{font:500 10px var(--font-mono);color:#9CA3AF;white-space:nowrap}
+
+/* ---- leyenda: pildora que se abre en tarjeta ---- */
+.legend{
+  position:absolute;left:var(--sp-4);top:66px;z-index:2;
+  background:var(--surface);border-radius:18px;box-shadow:var(--flota-sombra);overflow:hidden;
+  max-width:260px;
+}
+.legend-head{display:flex;align-items:center;gap:8px;min-height:34px;padding:0 10px 0 14px;cursor:pointer;user-select:none}
+.legend-head h3{font-size:13px;font-weight:600}
+.legend-chevron{display:inline-flex;width:16px;height:16px;color:var(--ink-dim);transition:transform .2s var(--ease)}
+.legend-chevron svg{width:16px;height:16px}
+.legend.collapsed .legend-chevron{transform:rotate(-90deg)}
+.legend.collapsed .legend-body{display:none}
+.legend-body{padding:2px 14px 12px;display:flex;flex-direction:column;gap:6px}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-dim)}
+.legend-swatch{width:16px;height:2px;flex:none}
+.legend-swatch.marca{width:16px;height:16px;background:none;object-fit:contain}
+.legend-swatch.dash{background:repeating-linear-gradient(90deg,var(--ink-dim) 0 4px,transparent 4px 7px)}
+.legend-swatch.ejecutada{height:2.5px;border-radius:2px;background:var(--ink-dim)}
+
+/* ---- camara (solo sobre el video) ---- */
+.cam-bar{
+  position:absolute;left:var(--sp-4);top:66px;z-index:3;width:260px;
+  display:flex;align-items:center;gap:6px;min-height:36px;padding:0 4px 0 12px;
+  background:var(--surface);border-radius:999px;box-shadow:var(--flota-sombra);
+}
+.cam-bar > svg{width:14px;height:14px;color:var(--ink-dim);flex:none}
+/* min-width:0: un nombre de camara largo no estira la barra. */
+.cam-bar select{border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;padding:2px 0;flex:1;min-width:0}
+.cam-bar select:focus{outline:none}
+.cam-bar button{
+  width:30px;height:30px;border:none;background:none;color:var(--ink-dim);cursor:pointer;
+  border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+}
+.cam-bar button:hover{background:var(--riel);color:var(--ink)}
+.cam-bar button svg{width:14px;height:14px}
+/* Buscar tarda segundos: el boton tiene que verse trabajando. */
+.cam-bar.buscando button svg{animation:cam-giro 1s linear infinite}
+.cam-bar.buscando select,.cam-bar.buscando button{pointer-events:none;color:var(--ink-faint)}
+@keyframes cam-giro{to{transform:rotate(360deg)}}
+
+#viewVideo{background:#0b0c0e}
+/* Un <img> arrastrable puede robarse el gesto: fuera del alcance del puntero. */
+#viewVideo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
+#lienzoVideo{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
+
+/* ---- pagina de telemetria ---- */
+#graficas{display:flex;flex-direction:column;gap:var(--sp-4)}
+.grafica{min-width:0}
+.grafica-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);margin-bottom:4px}
+.grafica-head h3{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grafica-leyenda{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.grafica-leyenda span{display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-dim)}
+.grafica-leyenda i{width:7px;height:7px;border-radius:2px;flex:none}
+.grafica canvas{display:block;width:100%;height:96px;background:var(--surface-2);border-radius:10px}
+
+/* Sistema: configuracion fija de Atlas, no telemetria. */
+.stat-group{gap:var(--sp-2)}
+.stat-row{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:24px;font-size:12.5px}
+.stat-row .k{color:var(--ink-dim)}
+.stat-row .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:600}
+
+.pill{
+  display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:0 10px;border-radius:999px;
+  font-size:11.5px;font-weight:700;color:var(--ink-dim);background:var(--riel);white-space:nowrap;
+}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.6}
+.pill.ok{color:#15803D;background:rgba(22,163,74,.10)}
+.pill.ok::before{opacity:1}
+.pill.warn{color:var(--aviso);background:rgba(180,83,9,.10)}
+.pill.warn::before{opacity:1}
+.pill.err{color:var(--alarma);background:rgba(227,6,19,.08)}
+.pill.err::before{opacity:1}
+
+/* Registro de ensayo: arriba de las graficas, porque se arma antes de que
+   el robot ande. */
+.rec-bar{display:flex;flex-direction:column;gap:var(--sp-2)}
+.rec-nombre{
+  width:100%;height:44px;padding:0 14px;
+  font-family:var(--font-mono);font-size:12.5px;border:0;border-radius:var(--r-campo);
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+}
+.rec-nombre::placeholder{color:var(--ink-faint)}
+.rec-nombre:focus{outline:2px solid var(--foco);outline-offset:0}
+.rec-botones{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.rec-bar .btn{justify-content:center;min-height:40px}
+/* El punto late solo mientras se graba: de reojo lo que se ve es el parpadeo. */
+.rec-punto{width:8px;height:8px;border-radius:999px;background:var(--ink-faint);flex:none}
+.rec-bar .btn.grabando{background:var(--ink);color:#fff}
+.rec-bar .btn.grabando .rec-punto{background:#fff;animation:latido 1s infinite}
+.rec-estado{font-family:var(--font-mono);font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec-estado.grabando{color:var(--ink)}
+
+/* ============================================================
+   PANEL DERECHO
+   ============================================================ */
+/* La columna no rueda entera: rueda la pagina visible por dentro, y el menu
+   inferior flota encima de ella. */
+.sidebar{
+  position:relative;width:var(--sidebar-w);flex:none;min-height:0;overflow:hidden;
+  display:flex;flex-direction:column;padding:0 var(--sp-4) 0 var(--sp-3);
+}
+.pane{
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  display:flex;flex-direction:column;gap:var(--sp-3);padding:0 2px 104px;
+}
+.pane[hidden]{display:none}
+.pane-entra{animation:funde 220ms ease}
+@keyframes funde{from{opacity:0}}
+
+/* Cabecera de pagina */
+.cab0{display:flex;align-items:center;gap:10px;min-height:44px;flex:none}
+.cab0 h2{font-size:24px;line-height:1.15;font-weight:800;letter-spacing:-.01em}
+.chip{
+  margin-left:auto;display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 14px;
+  border-radius:999px;background:var(--surface);box-shadow:var(--filo);font-size:13px;font-weight:700;white-space:nowrap;
+}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--c,var(--ink-faint));flex:none}
+
+/* Menu inferior flotante: pildora de tres paginas + boton redondo aparte */
+.navinf{position:absolute;left:var(--sp-3);right:var(--sp-4);bottom:var(--sp-3);z-index:6;display:flex;align-items:center;gap:10px}
+.navinf-pildora{flex:1;display:flex;gap:2px;padding:5px;border-radius:999px;background:var(--surface);box-shadow:var(--flota-sombra)}
+.navinf-pildora button{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;
+  border:0;border-radius:999px;background:none;color:var(--ink-dim);font-size:11px;font-weight:700;cursor:pointer;
+}
+.navinf-pildora button.on{background:var(--riel);color:var(--ink)}
+.navinf-mas{
+  width:58px;height:58px;flex:none;display:grid;place-items:center;border:0;border-radius:50%;
+  background:var(--surface);box-shadow:var(--flota-sombra);cursor:pointer;
+}
+.navinf-mas:hover{background:var(--surface-2)}
+.ico{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* Hoja que sube desde abajo, dentro del panel: la cancha sigue a la vista */
+.hoja-capa{position:absolute;inset:0;z-index:10}
+.hoja-capa[hidden]{display:none}
+.hoja-capa:not(.abierta){pointer-events:none}
+.hoja-velo{position:absolute;inset:0;background:rgba(18,24,38,.42);opacity:0;transition:opacity 280ms ease}
+.hoja{
+  position:absolute;left:0;right:0;bottom:0;max-height:90%;display:flex;flex-direction:column;
+  background:var(--bg);border-radius:28px 28px 0 0;box-shadow:0 -12px 40px rgba(17,19,23,.22);
+  transform:translateY(100%);transition:transform 320ms var(--ease);
+}
+.hoja::before{content:"";position:absolute;top:8px;left:50%;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:var(--ink-faint);opacity:.5}
+.hoja-capa.abierta .hoja-velo{opacity:1}
+.hoja-capa.abierta .hoja{transform:none}
+.hoja-cab{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:20px 8px 4px 16px}
+.hoja-cab h2{font-size:19px;font-weight:800}
+.hoja-cuerpo{flex:1;min-height:0;overflow-y:auto;padding:8px 16px 20px;display:flex;flex-direction:column;gap:var(--sp-3)}
+.btn-cerrar{width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:50%;background:none;cursor:pointer}
+.btn-cerrar:hover{background:var(--surface-2)}
+.w-cab{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+
+/* Tarjeta (widget): blanca, filo de 1 px, sin sombra */
+.w{
+  display:flex;flex-direction:column;gap:var(--sp-3);flex:none;
+  padding:var(--sp-4);border-radius:var(--r-w);background:var(--surface);box-shadow:var(--filo);
+}
+.w-tit{font-size:13px;font-weight:600;color:var(--ink)}
+
+/* ---- fichas: robots y obstaculos ----
+   La elegida va con aro grafito; el color del robot vive en su punto. */
+.robot-select{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-2)}
+.robot-select button{
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  min-height:96px;padding:10px 4px;border:none;border-radius:var(--r-celda);
+  background:var(--surface-2);font-size:13px;font-weight:700;color:var(--ink-dim);cursor:pointer;
+  transition:background .15s var(--ease),box-shadow .15s var(--ease),color .15s var(--ease);
+}
+.robot-select button:not(.on):not(.off):hover{background:var(--riel)}
+.robot-select button.on{background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 2px var(--ink)}
+.robot-select button.off{opacity:.38;cursor:not-allowed}
+.robot-nombre{display:inline-flex;align-items:center;gap:6px}
+.robot-nombre i{width:8px;height:8px;border-radius:50%;background:var(--c,var(--ink-faint));flex:none}
+/* Los PNG tienen proporciones distintas: se acota el cuadro y la imagen se ajusta dentro. */
+.robot-mini{width:52px;height:52px;flex:none;object-fit:contain;pointer-events:none;user-select:none}
+.robot-select button.off .robot-mini{filter:grayscale(1)}
+
+.obs-select{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
+.obs-glifo{width:52px;height:52px;flex:none;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.obs-glifo svg{width:34px;height:34px}
+/* El "+" es un hueco por llenar, no una cuarta ficha puesta. */
+.obs-select .obs-mas{background:none;color:var(--ink-dim);box-shadow:inset 0 0 0 1.5px var(--line-strong)}
+.obs-select .obs-mas .obs-glifo{width:44px;height:44px;border-radius:50%;background:var(--riel)}
+.obs-select .obs-mas .obs-glifo svg{width:22px;height:22px}
+.obs-select .obs-mas:hover{color:var(--ink);background:var(--surface-2)}
+.obs-vacio{font-size:13px;color:var(--ink-dim)}
+.obs-vacio b{color:var(--ink)}
+#obsParams{display:flex;flex-direction:column;gap:var(--sp-3)}
+#obsParams[hidden]{display:none}
+/* Borrar va al fondo y sin peso; rojo solo al pasar por encima. */
+.obs-borrar{display:flex}
+.obs-borrar .btn{flex:1;justify-content:center}
+.obs-borrar .btn:hover{color:var(--alarma)}
+
+/* ---- modo de control (y las fichas que reusan su esqueleto) ---- */
+.campo-modelo-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+.modo-select{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px;border-radius:var(--r-celda);background:var(--riel)}
+.modo-select button{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:58px;padding:6px 2px;border:none;border-radius:10px;background:none;
+  font-size:11.5px;font-weight:700;color:var(--ink-dim);cursor:pointer;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.modo-select button span{white-space:nowrap}
+.modo-select svg{width:18px;height:18px;fill:currentColor;pointer-events:none}
+.modo-select button.on{background:var(--ink);color:#fff}
+.modo-select button:not(.on):hover{background:rgba(17,19,23,.05);color:var(--ink)}
+/* Los glifos de repulsor son de trazo, no siluetas. */
+.obs-tipo svg{fill:none;stroke:currentColor;width:21px;height:21px}
+
+/* ArUco del robot, en la cabecera del modo */
+.tag-aruco{display:flex;align-items:center;gap:8px;min-width:0}
+.tag-aruco label{font-size:12.5px;font-weight:600;color:var(--ink-dim);white-space:nowrap}
+/* Punto de estado: gris apagado, ambar si el marcador no aparece, verde cuando se ve. */
+.tag-punto{width:9px;height:9px;border-radius:50%;flex:none;background:var(--line-strong);transition:background .15s var(--ease)}
+.tag-punto.visto{background:var(--ok)}
+.tag-punto.perdido{background:var(--aviso)}
+/* Apagado (Simulacion sin MQTT): sigue visible para que se sepa que existe. */
+.tag-aruco.off{opacity:.4;pointer-events:none}
+
+/* ---- grupos de parametros ---- */
+.param-group{display:flex;flex-direction:column;gap:var(--sp-2);padding-top:var(--sp-3);box-shadow:0 -1px 0 var(--line)}
+.param-group[hidden]{display:none}
+
+/* Slider de un renglon: rotulo y cifra a la izquierda, riel a la derecha;
+   la columna fija hace que los rieles arranquen a plomo. */
+.slider{display:grid;grid-template-columns:var(--rotulo-w) 1fr;align-items:center;gap:var(--sp-2);min-height:32px}
+.slider[hidden]{display:none}
+.slider label{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;color:var(--ink-dim);min-width:0;white-space:nowrap}
+.slider label b,.slider-min label b{font-family:var(--font-mono);font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+#manualFlechas .slider label{color:var(--ink);font-weight:600}
+.slider-tras-fichas{margin-top:2px}
+
+/* Riel de la piel: gris, lleno hasta el pulgar no; pulgar grafito. */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:24px;margin:0;background:none;cursor:pointer;
+  accent-color:var(--ink);
+}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:var(--riel)}
+input[type=range]::-moz-range-track{height:6px;border-radius:999px;background:var(--riel)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;margin-top:-6px;border-radius:50%;
+  background:var(--surface);box-shadow:inset 0 0 0 3px var(--ink),0 1px 4px rgba(16,24,40,.18);
+}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 3px var(--ink),0 1px 4px rgba(16,24,40,.18)}
+input[type=range]:focus-visible{outline:none}
+input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--foco);outline-offset:2px}
+
+/* Un select en el mismo esqueleto que un slider */
+.field.linea{display:grid;grid-template-columns:var(--rotulo-w) 1fr;align-items:center;gap:var(--sp-2)}
+.field.linea label{font-size:12.5px;color:var(--ink-dim)}
+.field select{
+  height:40px;padding:0 10px;border:0;border-radius:var(--r-campo);
+  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);font-size:13px;font-weight:600;width:100%;cursor:pointer;
+}
+
+/* Rotulo del grupo y luego los pares "X [caja]", todo en un renglon */
+.fila-cajas{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3)}
+.fila-cajas[hidden]{display:none}
+.fila-cajas-tit{font-size:12.5px;color:var(--ink-dim);white-space:nowrap}
+.par-num{display:flex;align-items:center;gap:6px;cursor:text;font-size:12.5px;font-weight:700}
+.caja-num{
+  width:64px;height:36px;padding:0 6px;text-align:center;
+  font-family:var(--font-mono);font-size:13px;font-weight:600;
+  border:0;border-radius:10px;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+  -moz-appearance:textfield;appearance:textfield;
+}
+.caja-num::-webkit-outer-spin-button,.caja-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.caja-num:focus{outline:2px solid var(--foco);outline-offset:0}
+.tag-aruco .caja-num{width:48px;height:32px}
+
+/* ---- botones ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 16px;
+  border:0;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;
+  transition:background .15s var(--ease),color .15s var(--ease),opacity .15s;
+}
+.btn svg{width:15px;height:15px;flex:none}
+/* .btn trae display propio y le ganaria al [hidden]. */
+.btn[hidden]{display:none}
+.btn-ghost{background:var(--riel);color:var(--ink)}
+.btn-ghost:hover{background:color-mix(in srgb,var(--riel) 85%,var(--ink))}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:disabled:hover{background:var(--riel)}
+.btn-icono{width:36px;min-height:36px;padding:0;justify-content:center;background:none;color:var(--ink-dim)}
+.btn-icono:hover{background:var(--riel);color:var(--ink)}
+/* Marcha: corriendo, la pildora suave "Pausar"; en pausa, la grafito "Correr". */
+.run-group .btn-run,.run-group .btn-pause{min-height:36px;padding:0 16px}
+.btn-pause{background:var(--ink);color:#fff}
+.btn-pause:hover{background:color-mix(in srgb,var(--ink) 86%,#fff)}
+.btn-run{background:var(--riel);color:var(--ink)}
+.btn-run:hover{background:color-mix(in srgb,var(--riel) 85%,var(--ink))}
+
+/* ---- switch ---- */
+.switch{
+  width:40px;height:24px;border-radius:999px;background:var(--line-strong);
+  border:none;position:relative;cursor:pointer;padding:0;flex:none;transition:background .15s var(--ease);
+}
+.switch i{
+  position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.25);transition:transform .2s var(--ease);
+}
+.switch.on{background:var(--ink)}
+.switch.on i{transform:translateX(16px)}
+.switch.switch-grande{width:44px;height:26px}
+.switch.switch-grande i{width:20px;height:20px}
+
+/* ---- manual: Ruedas | Flechas como selector de pildora ----
+   Las dos palabras son el selector (main.js las escucha); el switch queda
+   escondido pero sigue ahi para el teclado y el lector de pantalla. */
+.fila-modo{display:flex}
+.fila-modo[hidden]{display:none}
+.manual-modo{flex:1;display:flex;gap:2px;padding:4px;border-radius:999px;background:var(--riel);position:relative}
+.manual-modo[hidden]{display:none}
+.manual-modo span{
+  flex:1;display:flex;align-items:center;justify-content:center;min-height:34px;border-radius:999px;
+  font-size:13px;font-weight:600;color:var(--ink-dim);cursor:pointer;user-select:none;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.manual-modo span.on{background:var(--surface);color:var(--ink);box-shadow:var(--filo)}
+.manual-modo .switch{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.manual-modo .switch:focus-visible + span{outline:2px solid var(--foco)}
+
+/* ---- manual: cajas por rueda sobre la foto ---- */
+.manual-mapa{position:relative;width:100%;max-width:200px;margin:var(--sp-1) auto}
+.manual-mapa img{display:block;width:100%;height:auto;opacity:.92;pointer-events:none;user-select:none}
+.manual-rueda{position:absolute;display:flex;flex-direction:column;align-items:center;gap:3px}
+.manual-rueda label{font-size:11px;font-weight:700;color:var(--ink-dim);background:rgba(255,255,255,.9);border-radius:6px;padding:0 5px}
+.manual-rueda input{
+  width:60px;height:34px;padding:0 4px;text-align:center;
+  font-family:var(--font-mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;
+  border:0;border-radius:10px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong);
+}
+.manual-rueda input:focus{outline:2px solid var(--foco);outline-offset:0}
+.manual-rueda input.vivo{background:var(--ink);color:#fff;box-shadow:none}
+.mr-ti{top:0;left:0}
+.mr-td{top:0;right:0}
+.mr-bi{bottom:0;left:0}
+.mr-bd{bottom:0;right:0}
+.mr-t{top:0;left:50%;transform:translateX(-50%)}
+.mr-b{bottom:0;left:50%;transform:translateX(-50%)}
+
+.manual-cuenta{font-family:var(--font-mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.manual-cuenta.activo{color:var(--ink);background:var(--riel);border-radius:999px;padding:2px 10px}
+.manual-btns{display:grid}
+.manual-btns[hidden]{display:none}
+.manual-btns button.enviar{
+  min-height:48px;border:0;border-radius:999px;background:var(--ink);color:#fff;
+  font-size:14px;font-weight:700;cursor:pointer;
+}
+.manual-btns button.enviar:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 86%,#fff)}
+.manual-btns button:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---- manual: cruceta ----
+   Las nueve celdas van en el orden del HTML; el centro es la potencia. */
+.dpad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:var(--sp-1)}
+.dp{
+  display:flex;align-items:center;justify-content:center;min-height:52px;
+  border:0;border-radius:18px;background:var(--surface);box-shadow:var(--filo);color:var(--ink);cursor:pointer;
+  /* sin esto, arrastrar el dedo hace scroll y el robot se para a media maniobra */
+  touch-action:none;user-select:none;transition:background .1s var(--ease),color .1s var(--ease);
+}
+.dp svg{width:20px;height:20px}
+.dp:hover{background:var(--surface-2)}
+.dp.on{background:var(--ink);color:#fff;box-shadow:none}
+.dp-centro{
+  display:flex;align-items:center;justify-content:center;border-radius:18px;background:var(--riel);
+  font-family:var(--font-mono);font-size:14px;font-weight:600;color:var(--ink-dim);font-variant-numeric:tabular-nums;user-select:none;
+}
+.dp-centro.activo{background:var(--ink);color:#fff}
+/* Los dos de giro debajo, del ancho de dos celdas de la cruz y centrados. */
+.dpad-giro{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:calc(66.667% - 2px);margin:6px auto 0}
+.dpad-giro[hidden]{display:none}
+.manual-trama{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);text-align:center;font-variant-numeric:tabular-nums;margin-top:var(--sp-2)}
+.manual-trama b{color:var(--ink);font-weight:600}
+
+/* ---- sentido del espiral ---- */
+.fila-sentido{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+.fila-sentido[hidden]{display:none}
+.fila-sentido > label{font-size:12.5px;color:var(--ink-dim);white-space:nowrap}
+.fila-sentido .segmented button{min-height:30px;padding:0 12px;font-size:12.5px}
+
+/* Repulsion del robot: plegada como el error permitido, con su interruptor
+   en la cabecera. Apagada (intensidad 0), el cuerpo baja de tono. */
+.bloque-repulsor > summary .switch{margin-left:auto}
+.bloque-repulsor.apagado .desp-cuerpo{opacity:.55}
+.desp-cuerpo{display:flex;flex-direction:column;gap:var(--sp-2)}
+
+/* ---- editor de la formacion ----
+   Los lienzos se declaran al doble en el HTML y aqui se encogen: un punto de
+   4 px sale redondo en pantallas densas. */
+.formacion-editor{display:flex;align-items:flex-start;gap:var(--sp-3)}
+#lienzoFormacion{
+  width:158px;flex:none;height:auto;aspect-ratio:420/380;
+  background:var(--surface-2);border-radius:var(--r-celda);box-shadow:inset 0 0 0 1px var(--line);
+  cursor:grab;touch-action:none;
+}
+#lienzoFormacion:active,#lienzoBrujula:active{cursor:grabbing}
+#lienzoBrujula{width:62px;height:62px;flex:none;cursor:grab;touch-action:none}
+.formacion-mandos{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:var(--sp-2)}
+.slider-min{width:100%}
+.slider-min label{display:flex;justify-content:space-between;gap:6px;font-size:12px;color:var(--ink-dim);white-space:nowrap;margin-bottom:2px}
+.formacion-pie{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2)}
+#figuraNombre{font-size:13px;font-weight:700}
+#fReiniciar{
+  min-height:34px;padding:0 14px;border:0;border-radius:999px;background:var(--riel);
+  font-size:12.5px;font-weight:700;cursor:pointer;
+}
+#fReiniciar:hover{background:color-mix(in srgb,var(--riel) 85%,var(--ink))}
+
+/* ---- desplegable: lo que se ajusta pocas veces ---- */
+.desp{gap:0}
+.desp > summary{list-style:none;display:flex;align-items:center;gap:var(--sp-2);min-height:24px;cursor:pointer}
+.desp > summary::-webkit-details-marker{display:none}
+.desp-resumen{margin-left:auto;font-family:var(--font-mono);font-size:12px;color:var(--ink-dim)}
+.desp-chev{width:16px;height:16px;color:var(--ink-dim);transition:transform .2s var(--ease)}
+.desp[open] .desp-chev{transform:rotate(90deg)}
+.desp[open] > summary{margin-bottom:var(--sp-3)}
+
+.tol-group{display:flex;flex-direction:column;gap:var(--sp-2)}
+.tol{display:flex;align-items:center;gap:var(--sp-3);cursor:pointer}
+.tol span{font-size:12.5px;color:var(--ink-dim);width:62px;flex:none}
+.tol input[type=range]{flex:1;min-width:0}
+/* Ancho fijo: pasar de "9°" a "15°" no corre el riel mientras se arrastra. */
+.tol b{font-family:var(--font-mono);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;width:44px;flex:none;text-align:right}
+
+/* ---- visor alto o bajo: boton redondo que solo existe en telefono ---- */
+.visor-tam{
+  position:absolute;right:var(--sp-4);top:var(--sp-4);z-index:4;display:none;
+  width:44px;height:44px;place-items:center;padding:0;border:0;border-radius:50%;
+  background:var(--surface);box-shadow:var(--flota-sombra);color:var(--ink);cursor:pointer;
+}
+.visor-tam:hover{background:var(--surface-2)}
+
+/* ============================================================
+   PANTALLAS ANGOSTAS ("Laboratorio angosto")
+   Tres anchos: ancho (>=1100) como arriba; medio (720-1099) lado a lado
+   con el panel mas flaco y la barra compacta; telefono (<720) apilado sin
+   scroll de pagina: barra, visor de alto --visor-h y el panel en lo que
+   sobra, donde solo rueda la pagina visible.
+   ============================================================ */
+@media (max-width:1099px){
+  :root{--sidebar-w:clamp(320px,36vw,400px);--rotulo-w:120px}
+  .barra-sub{display:none}
+  /* Marcha solo con iconos; el texto queda para el lector de pantalla. */
+  .run-group{padding-left:12px}
+  .run-group .btn-run,.run-group .btn-pause{width:36px;padding:0;justify-content:center}
+  .run-group .btn-txt{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+  /* MQTT solo con el switch; el nombre lo lleva el aria-label del checkbox. */
+  .mqtt-txt{display:none}
+  .mqtt-enable{width:auto;padding:0 10px;justify-content:center}
+  /* Los flotantes del visor, mas chicos para no pisarse; la camara 3D va
+     debajo del 2D/3D. */
+  .stage-modo button{padding:0 10px;font-size:12.5px}
+  .stage-vista{flex-direction:column;align-items:flex-end}
+  /* Panel de 320 px: el rotulo de 120 se parte en dos renglones antes
+     que montarse sobre el riel. */
+  .slider label{white-space:normal;align-items:baseline;line-height:1.25}
+  .slider label b{white-space:nowrap}
+  .campo-modelo-head,.fila-sentido{flex-wrap:wrap;row-gap:var(--sp-2)}
+  /* Cuatro fichas no caben en 320: dos por dos, icono y nombre en un renglon. */
+  .modo-select{grid-template-columns:repeat(2,1fr)}
+  .modo-select button{flex-direction:row;gap:8px;min-height:44px;padding:6px 8px}
+  #lienzoFormacion{width:clamp(132px,45%,200px)}
+}
+
+@media (max-width:719px){
+  /* El alto del visor: chico por defecto, grande con el boton. */
+  :root{--visor-h:max(200px,44vh)}
+  .app.visor-grande{--visor-h:max(200px,66vh)}
+  .app{height:100vh}
+  @supports (height:100dvh){
+    :root{--visor-h:max(200px,44dvh)}
+    .app.visor-grande{--visor-h:max(200px,66dvh)}
+    .app{height:100dvh}
+  }
+  .barra{
+    height:calc(var(--barra-h) + env(safe-area-inset-top,0px));gap:var(--sp-2);
+    padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));
+  }
+  /* El nombre cede antes que los mandos: PARO no se sale nunca de la barra. */
+  .barra-nombre{font-size:16px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .barra-der{flex:none;gap:6px}
+  .run-group{gap:4px;padding:4px 4px 4px 10px}
+  .mqtt-enable{padding:0 6px}
+  .btn.btn-paro{padding:0 14px}
+  .main-row{flex-direction:column}
+  .centro{flex:none;padding:0 8px 8px}
+  .stage-wrap{flex:none;height:var(--visor-h)}
+  .visor-tam{display:grid}
+  /* Arriba a la derecha queda el boton del visor: 2D/3D baja a la esquina
+     de abajo, con la camara 3D encima. */
+  .stage-vista{top:auto;bottom:var(--sp-4);flex-direction:column-reverse}
+  .pista-3d{display:none}
+  .legend,.cam-bar{max-width:calc(100% - 32px)}
+  .sidebar{width:100%;flex:1;min-height:0;padding:0 12px}
+  .pane{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
+  .navinf{left:12px;right:12px;bottom:calc(var(--sp-3) + env(safe-area-inset-bottom,0px))}
+  /* Rotulo arriba y control debajo: a lo ancho del telefono el riel luce. */
+  .slider,.field.linea{grid-template-columns:1fr;gap:2px}
+  .slider label{white-space:nowrap}
+  /* La hoja de ajustes tapa toda la pantalla: el panel es muy bajo para ella. */
+  .hoja-capa{position:fixed}
+  .hoja{max-height:88vh;padding-bottom:env(safe-area-inset-bottom,0px)}
+  @supports (height:100dvh){.hoja{max-height:88dvh}}
+}
+@media (max-width:419px){
+  .run-timer{display:none}
+  .run-group{padding:4px}
+}
+
+/* Con el dedo: todo lo que se toca, de 44 px. */
+@media (pointer:coarse){
+  .segmented button,.fila-sentido .segmented button,.manual-modo span{min-height:44px}
+  .btn,.run-group .btn-run,.run-group .btn-pause,#fReiniciar,.legend-head,.desp > summary{min-height:44px}
+  .btn-icono,.run-group .btn-run,.run-group .btn-pause{min-width:44px}
+  .cam-bar button{width:44px;height:44px}
+  .caja-num,.tag-aruco .caja-num,.field select{height:44px}
+  input[type=range]{height:44px}
+  /* Los flotantes de arriba crecen: lo de debajo baja con ellos. */
+  .legend,.cam-bar{top:76px}
+}
+/* Sin raton no hay clic derecho ni rueda: la pista sobra. */
+@media (hover:none){
+  .pista-3d{display:none}
+}

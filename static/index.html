@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flota AGV · banco de pruebas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<!-- Iconos del menu inferior: trazo 1.8, caja 24; el relleno marca la pagina elegida. -->
+<svg hidden aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-robots" viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="11" rx="3"/><circle cx="7.5" cy="18.5" r="1.8"/><circle cx="16.5" cy="18.5" r="1.8"/><path d="M12 6V3.5"/><circle cx="12" cy="11.5" r="1.6"/></symbol>
+  <symbol id="i-robots-on" viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="11" rx="3" fill="currentColor"/><circle cx="7.5" cy="18.5" r="1.8" fill="currentColor"/><circle cx="16.5" cy="18.5" r="1.8" fill="currentColor"/><path d="M12 6V3.5"/></symbol>
+  <symbol id="i-obstaculos" viewBox="0 0 24 24"><path d="M12 3.5 6.5 19h11z"/><path d="M8.3 14h7.4M9.8 9.5h4.4"/><path d="M4.5 19.5h15"/></symbol>
+  <symbol id="i-obstaculos-on" viewBox="0 0 24 24"><path d="M12 3.5 6.5 19h11z" fill="currentColor"/><path d="M4.5 19.5h15"/></symbol>
+  <symbol id="i-telemetria" viewBox="0 0 24 24"><path d="M4 19.5h16"/><path d="M4 15.5 8.5 10l3.5 3.5L16 7l4 4"/></symbol>
+  <symbol id="i-telemetria-on" viewBox="0 0 24 24"><path d="M4 19.5h16"/><path d="M4 15.5 8.5 10l3.5 3.5L16 7l4 4V19.5H4z" fill="currentColor"/></symbol>
+  <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <!-- Visor alto o bajo (solo en telefono): flechas hacia afuera o hacia la linea. -->
+  <symbol id="i-agrandar" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M8.5 7.5 12 4l3.5 3.5M8.5 16.5 12 20l3.5-3.5"/></symbol>
+  <symbol id="i-achicar" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M8.5 4.5 12 8l3.5-3.5M8.5 19.5 12 16l3.5 3.5"/></symbol>
+</svg>
+<div class="app">
+
+  <!-- Barra: lo que vale para TODA la flota. La marcha, el armado MQTT y el
+       paro no son del robot elegido, asi que no viven en su panel: arriba,
+       a todo lo ancho, como en el resto de las herramientas de control. -->
+  <header class="barra">
+    <h1 class="barra-nombre">Flota AGV</h1>
+    <span class="barra-sub">Banco de pruebas</span>
+
+    <div class="barra-der">
+      <div class="run-group">
+        <span class="run-timer" id="runTimer">00:00</span>
+        <button id="bcorrer" class="btn btn-run"></button>
+        <button id="breiniciar" class="btn btn-icono" title="Reiniciar" aria-label="Reiniciar">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 4"></path><path d="M13.5 2v3.6H9.9"></path></svg>
+        </button>
+      </div>
+
+      <!-- El armado de los robots fisicos, para los TRES a la vez. Arranca
+           apagado. En Punto, Trayectoria y Formacion no basta con encenderlo:
+           sin ArUco detectado no sale ninguna orden. Por debajo sigue siendo
+           un checkbox (escondido), asi que el teclado y el onchange de
+           main.js no cambian. Tamano fijo: solo el rotulo y el switch; lo que
+           dice si esta armado es la posicion del switch. -->
+      <label class="mqtt-enable" id="bloqueArmado"
+             title="Publica a los robots físicos por MQTT. En Punto, Trayectoria y Formación solo sale si la cámara ve su ArUco.">
+        <span class="mqtt-txt">MQTT</span>
+        <input type="checkbox" id="mReal" role="switch" aria-label="MQTT">
+        <span class="switch switch-grande" aria-hidden="true"><i></i></span>
+      </label>
+
+      <!-- Paro de emergencia, siempre a la vista: un boton que aparece y
+           desaparece no se encuentra con prisa. Manda ceros a toda la flota
+           al instante en vez de esperar los 2.5 s del watchdog. -->
+      <button id="bparo" class="btn btn-paro" title="Paro de emergencia (Esc)">PARO</button>
+    </div>
+  </header>
+
+  <div class="body">
+    <div class="main-row">
+
+      <div class="centro">
+      <div class="stage-wrap">
+      <div class="stage-full">
+        <!-- Simulacion / Real / Filtros. Vive DENTRO del visor: lo que conmuta
+             es esa caja, no la pagina entera. Filtros es Real con otra fuente
+             de video: el gris realzado que ve el detector. -->
+        <div class="segmented stage-modo" id="segModo">
+          <button class="on" data-modo="sim">Simulación</button>
+          <button data-modo="real">Real</button>
+          <button data-modo="filtro">Filtros</button>
+        </div>
+        <!-- 2D o 3D, solo en Simulacion: en Real lo que se mira es el video. -->
+        <div class="stage-vista" id="barraVista">
+          <div class="segmented" id="segVista">
+            <button class="on" data-vista="2d">2D</button>
+            <button data-vista="3d">3D</button>
+          </div>
+          <div class="segmented" id="segCamara3d" hidden>
+            <button data-camara="cenital" title="Vista desde arriba">Cenital</button>
+            <button data-camara="perspectiva" title="Vista en perspectiva">Perspectiva</button>
+          </div>
+        </div>
+        <!-- Visor alto o bajo: solo se ve en telefono, donde el panel le
+             disputa la altura. main.js lo recuerda entre recargas. -->
+        <button type="button" class="visor-tam" id="bVisor" aria-pressed="false"
+                aria-label="Agrandar mapa" title="Agrandar mapa"><svg class="ico" aria-hidden="true"><use href="#i-agrandar"/></svg></button>
+        <div class="view" id="viewMapa">
+          <canvas id="lienzo"></canvas>
+          <!-- La escena 3D se monta aqui la primera vez que se pide. -->
+          <div class="vista-3d" id="vista3d" hidden>
+            <div class="view-empty" id="aviso3d">Cargando vista 3D…</div>
+            <div class="pista-3d">clic der. orbita · rueda acerca · clic central desplaza · Shift gira</div>
+          </div>
+          <!-- Arranca guardada: se consulta una vez y ya. -->
+          <div class="legend collapsed" id="legend">
+            <div class="legend-head" id="legendHead">
+              <h3>Leyenda</h3>
+              <span class="legend-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6 3.5 3.5L11.5 6"/></svg></span>
+            </div>
+            <div class="legend-body">
+              <div class="legend-row"><img class="legend-swatch marca" src="assets/real.png" alt="">Pose real (negro)</div>
+              <div class="legend-row"><img class="legend-swatch marca" src="assets/marca.png" alt="">Pose deseada, y el aro es la zona de llegada</div>
+              <div class="legend-row"><span class="legend-swatch dash"></span>Trayectoria de referencia</div>
+              <div class="legend-row"><span class="legend-swatch ejecutada"></span>Trayectoria ejecutada</div>
+            </div>
+          </div>
+        </div>
+        <div class="view" id="viewVideo">
+          <img id="videoImg" src="/video.mjpg" alt="Video con detección ArUco">
+          <!-- Mismo dibujo que el mapa encima del video. Lo unico real es el robot. -->
+          <canvas id="lienzoVideo"></canvas>
+          <!-- Selector de camara: sobre el video, porque cual es cual se
+               reconoce mirando la imagen. autocomplete=off evita que Chrome
+               restaure el valor al recargar y abra una camara sola. -->
+          <div class="cam-bar" id="camBar">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+              <path d="M1.5 4.8h3l1.2-1.8h4.6l1.2 1.8h3v8.2h-13z"></path><circle cx="8" cy="8.9" r="2.4"></circle>
+            </svg>
+            <select id="camSelect" autocomplete="off" title="Cámara que alimenta al servidor"></select>
+            <button id="camBuscar" type="button" title="Buscar cámaras conectadas" aria-label="Buscar cámaras conectadas">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 4"></path><path d="M13.5 2v3.6H9.9"></path></svg>
+            </button>
+          </div>
+          <div class="view-empty" id="videoVacio" hidden>
+            <span id="vacioTitulo">Sin cámara</span>
+            <span id="vacioPista">elígela en el selector de arriba</span>
+          </div>
+          <div class="tag" id="tagVideo">esperando marcador</div>
+        </div>
+      </div>
+      </div>
+
+      </div>
+
+      <aside class="sidebar">
+        <div class="pane" id="panelControl">
+          <header class="cab0"><h2>Robots</h2></header>
+          <!-- A cual le hablo: la foto es como se reconoce en la cancha. -->
+          <section class="w">
+            <div class="robot-select" id="robotSelect"></div>
+          </section>
+
+          <section class="w">
+            <div class="campo-modelo-head">
+              <h2 class="w-tit">Modo de control</h2>
+              <!-- Que ArUco lleva pegado este robot. Es del robot, no del modo. -->
+              <div class="tag-aruco" id="bloqueTag">
+                <label for="iTag">ArUco</label>
+                <input type="number" class="caja-num" id="iTag" min="0" max="49" step="1" value="1">
+                <!-- Estado de la deteccion; el texto va en el title y en el rotulo del video. -->
+                <i class="tag-punto" id="tagEstado" title="—"></i>
+              </div>
+            </div>
+            <div class="modo-select" id="modoSelect" role="group" aria-label="Modo de control">
+              <button type="button" data-modelo="manual" aria-pressed="false" title="Conducir a mano">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 6 4h4L8 1.5Zm0 13L6 12h4l-2 2.5ZM1.5 8 4 6v4L1.5 8Zm13 0L12 6v4l2.5-2Z"/></svg>
+                <span>Manual</span>
+              </button>
+              <button type="button" data-modelo="punto" aria-pressed="false" title="Ir a un destino">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.6a5.4 5.4 0 1 1 0 10.8A5.4 5.4 0 0 1 8 2.6Z"/><circle cx="8" cy="8" r="2.4"/></svg>
+                <span>Punto</span>
+              </button>
+              <button type="button" data-modelo="trayectoria" aria-pressed="false" title="Seguir una curva">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 12.6c2.6 0 3.4-3.2 4.6-5.6C7.6 4.2 9 2.4 11.4 2.4v1.6c-1.5 0-2.4 1.2-3.6 3.7-1.2 2.5-2.3 6.5-6.2 6.5Z"/><circle cx="12.9" cy="3.2" r="2.2"/></svg>
+                <span>Trayectoria</span>
+              </button>
+              <button type="button" data-modelo="formacion" aria-pressed="false" title="Varios robots en figura">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="3.2" r="2.2"/><circle cx="3.2" cy="12" r="2.2"/><circle cx="12.8" cy="12" r="2.2"/></svg>
+                <span>Formación</span>
+              </button>
+            </div>
+
+            <!-- Ruedas | Flechas, solo en Manual. Las dos palabras son el
+                 selector; el switch sigue ahi para el teclado y el lector. -->
+            <div class="fila-modo" id="bloqueModoManual" hidden>
+              <div class="manual-modo">
+                <span id="mmRuedas" class="on">Ruedas</span>
+                <button type="button" class="switch" id="mModo" role="switch"
+                        aria-checked="false" aria-label="Conducir con flechas"><i></i></button>
+                <span id="mmFlechas">Flechas</span>
+              </div>
+            </div>
+
+            <!-- Punto -->
+            <div class="param-group" id="paramsPunto">
+              <div class="fila-cajas">
+                <span class="fila-cajas-tit">Destino</span>
+                <label class="par-num">X<input type="number" class="caja-num" id="pDestX" step="10" title="Destino X (px)"></label>
+                <label class="par-num">Y<input type="number" class="caja-num" id="pDestY" step="10" title="Destino Y (px)"></label>
+                <label class="par-num">θ<input type="number" class="caja-num" id="pDestTh" step="5" min="-180" max="180" title="Destino θ (grados)"></label>
+              </div>
+              <div class="slider">
+                <label>Ganancia de traslación <b id="vk">0.80</b></label>
+                <input type="range" id="sk" min="0.1" max="3" step="0.05" value="0.8">
+              </div>
+              <div class="slider">
+                <label>Escala de velocidad <b id="ve">100%</b></label>
+                <input type="range" id="se" min="40" max="100" step="5" value="100">
+              </div>
+            </div>
+
+            <!-- Trayectoria -->
+            <div class="param-group" id="paramsTrayectoria" hidden>
+              <div class="fila-cajas">
+                <span class="fila-cajas-tit">Centro</span>
+                <label class="par-num">X<input type="number" class="caja-num" id="tCentroX" step="10" title="Centro X (px)"></label>
+                <label class="par-num">Y<input type="number" class="caja-num" id="tCentroY" step="10" title="Centro Y (px)"></label>
+              </div>
+              <div class="field linea">
+                <label for="tTipo">Tipo</label>
+                <select id="tTipo">
+                  <option value="circulo">Círculo</option>
+                  <option value="lemniscata">Lemniscata</option>
+                </select>
+              </div>
+              <div class="slider">
+                <label>Radio (px) <b id="vRadio">180</b></label>
+                <input type="range" id="tRadio" min="60" max="320" step="10" value="180">
+              </div>
+              <div class="slider">
+                <label>Velocidad angular (rad/s) <b id="vOmega">0.50</b></label>
+                <input type="range" id="sOmega" min="0.1" max="2" step="0.05" value="0.5">
+              </div>
+            </div>
+
+            <!-- Formacion: la figura se edita en la rejilla (cada punto es un
+                 robot y se engancha a ella); la brujula elige hacia donde mira. -->
+            <div class="param-group" id="paramsFormacion" hidden>
+              <div class="formacion-editor">
+                <canvas id="lienzoFormacion" width="420" height="380"
+                        title="Arrastra cada robot para cambiar la figura"></canvas>
+                <div class="formacion-mandos">
+                  <canvas id="lienzoBrujula" width="180" height="180"
+                          title="Arrastra para girar la formación"></canvas>
+                  <div class="slider-min">
+                    <label>Separación <b id="vFa">370</b></label>
+                    <input type="range" id="sFa" min="240" max="550" step="10" value="370">
+                  </div>
+                  <div class="slider-min">
+                    <label>Ganancia <b id="vFk">1.20</b></label>
+                    <input type="range" id="sFk" min="0.1" max="3" step="0.1" value="1.2">
+                  </div>
+                </div>
+              </div>
+              <div class="formacion-pie">
+                <span id="figuraNombre">Triángulo</span>
+                <button type="button" id="fReiniciar" title="Volver al triángulo sin girar">Reiniciar formación</button>
+              </div>
+            </div>
+
+            <!-- Manual: lazo abierto. La trama se escribe rueda por rueda, o se
+                 conduce con la cruceta y las flechas del teclado. -->
+            <div class="param-group" id="paramsManual" hidden>
+              <div id="manualRuedas"></div>
+
+              <!-- La cruceta se arma por robot: ver construirFlechasManual().
+                   La potencia va ANTES: se decide antes de empujar. -->
+              <div id="manualFlechas" hidden>
+                <div class="slider">
+                  <label>Potencia</label>
+                  <input type="range" id="sPot" min="40" max="255" step="5" value="120">
+                </div>
+                <div class="dpad" id="dpadCruz"></div>
+                <div class="dpad-giro" id="dpadGiro" hidden></div>
+                <div class="manual-trama" id="mTrama">—</div>
+              </div>
+
+              <!-- Solo con cajas: ahi se manda DURANTE un tiempo. Con flechas
+                   lo que para es soltar. -->
+              <div class="fila-cajas" id="filaSegundos">
+                <label class="par-num">Duración<input type="number" class="caja-num" id="mSeg" step="0.5" min="0.5" max="60" value="2" title="Duración del envío (s)"></label>
+                <span class="fila-cajas-tit">Restante</span>
+                <span class="manual-cuenta" id="mCuenta">—</span>
+              </div>
+              <div class="manual-btns">
+                <button class="enviar" id="mEnviar">Enviar</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- El campo repulsivo que lleva el propio robot: empuja a los OTROS.
+               Plegado como el error permitido, pero con su interruptor en la
+               cabecera: asi se ve de fuera si el robot lleva campo, que era
+               lo que fallaba cuando se plegaba sin el. Encenderlo abre la
+               tarjeta y pone la intensidad de arranque (ETA_REPULSOR_ON). -->
+          <details class="w desp bloque-repulsor" id="bloqueRepulsor">
+            <summary>
+              <span class="w-tit">Repulsión del robot</span>
+              <button type="button" class="switch" id="repOn" role="switch" aria-checked="false"
+                      aria-label="Repulsión del robot" title="Encender o apagar el campo del robot"><i></i></button>
+              <svg class="desp-chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 4.5 3.5 3.5L6 11.5"/></svg>
+            </summary>
+            <div class="desp-cuerpo">
+              <div class="modo-select obs-tipo" id="repTipoSelect"
+                   role="group" aria-label="Tipo de repulsión del robot"></div>
+              <div class="fila-sentido" id="filaSentidoRep" hidden>
+                <label>Sentido del giro</label>
+                <div class="segmented" id="repSentido">
+                  <button type="button" data-sentido="1">Antihorario</button>
+                  <button type="button" data-sentido="-1">Horario</button>
+                </div>
+              </div>
+              <div class="slider">
+                <!-- El arranque cambia por robot: radioRepulsor en config.js. -->
+                <label>Radio de acción <b id="vRRadio">180 px</b></label>
+                <input type="range" id="sRRadio" min="60" max="230" step="5" value="170">
+              </div>
+              <div class="slider">
+                <label>Intensidad (η) <b id="vREta">0</b></label>
+                <input type="range" id="sREta" min="0" max="5000" step="50" value="0">
+              </div>
+            </div>
+          </details>
+
+        </div>
+
+        <!-- Obstaculos: GLOBALES, el campo lo sufren los tres por igual. Caben tres. -->
+        <div class="pane" id="panelObstaculos" hidden>
+          <header class="cab0"><h2>Obstáculos</h2></header>
+          <section class="w">
+            <!-- Mismas fichas que los robots. La ultima es el "+", y desaparece al llegar a tres. -->
+            <div class="obs-select robot-select" id="obsSelect"></div>
+            <div class="obs-vacio" id="obsVacio">Sin obstáculos. Añade uno con <b>+</b> y arrástralo por el mapa.</div>
+          </section>
+
+          <div id="obsParams" hidden>
+            <section class="w">
+              <div class="fila-cajas">
+                <span class="fila-cajas-tit">Centro</span>
+                <label class="par-num">X<input type="number" class="caja-num" id="oX" step="10" title="Centro X (px)"></label>
+                <label class="par-num">Y<input type="number" class="caja-num" id="oY" step="10" title="Centro Y (px)"></label>
+              </div>
+              <div class="slider">
+                <label>Radio de acción <b id="vORadio">120 px</b></label>
+                <input type="range" id="sORadio" min="30" max="150" step="5" value="120">
+              </div>
+              <div class="slider">
+                <!-- Hasta 5000: con poco eta el robot casi no rodea; hace falta
+                     llegar a los cientos para que se note. -->
+                <label>Intensidad (η) <b id="vOEta">600</b></label>
+                <input type="range" id="sOEta" min="0" max="5000" step="50" value="600">
+              </div>
+            </section>
+
+            <!-- Fichas y no un desplegable: se cambian probando. El icono es el
+                 mismo dibujo que el obstaculo lleva en el mapa (glifoRepulsor). -->
+            <section class="w">
+              <h2 class="w-tit">Tipo de repulsión</h2>
+              <div class="modo-select obs-tipo" id="obsTipoSelect"
+                   role="group" aria-label="Tipo de repulsión"></div>
+              <!-- Solo con Espiral: el unico que empuja de costado. -->
+              <div class="fila-sentido" id="filaSentido" hidden>
+                <label>Sentido del giro</label>
+                <div class="segmented" id="obsSentido">
+                  <button type="button" data-sentido="1">Antihorario</button>
+                  <button type="button" data-sentido="-1">Horario</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="w">
+              <h2 class="w-tit">Movimiento</h2>
+              <div class="modo-select" id="obsMovSelect" role="group" aria-label="Movimiento del obstáculo">
+                <button type="button" data-mov="fijo" aria-pressed="true" title="No se mueve">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.4"/><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 2"/></svg>
+                  <span>Fijo</span>
+                </button>
+                <button type="button" data-mov="recta" aria-pressed="false" title="Va y viene sobre una recta">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.4 7.2h13.2v1.6H1.4z"/><path d="M4.6 3.6 1.2 8l3.4 4.4zM11.4 3.6 14.8 8l-3.4 4.4z"/></svg>
+                  <span>Recta</span>
+                </button>
+                <button type="button" data-mov="circular" aria-pressed="false" title="Da vueltas sobre un círculo">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.4a6.6 6.6 0 1 0 6.6 6.6h-1.6A5 5 0 1 1 8 3v-1.6Z"/><path d="M6.4 1.4 9.8 3 6.4 4.6z"/></svg>
+                  <span>Círculo</span>
+                </button>
+                <button type="button" data-mov="lemniscata" aria-pressed="false" title="Recorre un ocho">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.3 3.2C6.1 3.2 7 4.7 8 6.3c1-1.6 1.9-3.1 3.7-3.1a2.8 2.8 0 0 1 0 5.6c-1.8 0-2.7-1.5-3.7-3.1-1 1.6-1.9 3.1-3.7 3.1a2.8 2.8 0 0 1 0-5.6Zm0 1.6a1.2 1.2 0 0 0 0 2.4c.9 0 1.5-.9 2.4-2.4-.9-1.5-1.5-2.4-2.4-2.4Zm7.4 0c-.9 0-1.5.9-2.4 2.4.9 1.5 1.5 2.4 2.4 2.4a1.2 1.2 0 0 0 0-2.4Z" transform="translate(0 2)"/></svg>
+                  <span>Ocho</span>
+                </button>
+              </div>
+
+              <div id="paramsObsRecta" hidden>
+                <div class="slider">
+                  <label>Largo del vaivén <b id="vOLargo">400 px</b></label>
+                  <input type="range" id="sOLargo" min="60" max="900" step="20" value="400">
+                </div>
+                <div class="slider">
+                  <label>Ángulo de la recta <b id="vOAng">0°</b></label>
+                  <input type="range" id="sOAng" min="0" max="175" step="5" value="0">
+                </div>
+              </div>
+
+              <!-- Un solo riel para el tamaño de las dos curvas; el rotulo cambia con el camino. -->
+              <div class="slider" id="filaObsOrbita" hidden>
+                <label><span id="oOrbitaTit">Radio de la órbita</span> <b id="vOOrbita">180 px</b></label>
+                <input type="range" id="sOOrbita" min="40" max="500" step="10" value="180">
+              </div>
+
+              <div class="slider" id="filaObsVel" hidden>
+                <label>Velocidad <b id="vOVel">0.80</b></label>
+                <input type="range" id="sOVel" min="-2" max="2" step="0.05" value="0.8">
+              </div>
+            </section>
+
+            <div class="obs-borrar">
+              <button type="button" class="btn btn-ghost" id="oBorrar">Eliminar obstáculo</button>
+            </div>
+          </div>
+        </div>
+        <!-- Telemetria: siempre del robot elegido. Al esconderse, los lienzos
+             quedan en 0x0 y dibujarUna() se sale sola: la pagina oculta no
+             cuesta nada, y el registro sigue corriendo igual. -->
+        <div class="pane" id="panelTelemetria" hidden>
+          <header class="cab0">
+            <h2>Telemetría</h2>
+            <span class="chip" id="tiraRobot"><i aria-hidden="true"></i><span>—</span></span>
+          </header>
+          <!-- Registro de ensayo. El nombre es lo que acaba en el archivo: a
+               las tres semanas es la unica forma de saber cual CSV era cual. -->
+          <section class="w">
+            <div class="rec-bar">
+              <input type="text" id="recNombre" class="rec-nombre" maxlength="40"
+                     placeholder="nombre del ensayo (p. ej. kp08-piso-liso)">
+              <div class="rec-botones">
+                <button type="button" class="btn btn-ghost" id="recGrabar"><i class="rec-punto"></i>Grabar</button>
+                <button type="button" class="btn btn-ghost" id="recMarca" disabled title="Marca un instante en la columna evento (tecla M)">Marca</button>
+                <button type="button" class="btn btn-ghost" id="recCsv">CSV</button>
+              </div>
+              <span class="rec-estado" id="recEstado">—</span>
+            </div>
+          </section>
+          <section class="w"><div id="graficas"></div></section>
+          <section class="w stat-group" id="grupoSistema">
+            <h3 class="w-tit">Sistema · Atlas</h3>
+            <div>
+              <div class="stat-row"><span class="k">Config. rodillos</span><span class="v" id="tcfg">—</span></div>
+              <div class="stat-row"><span class="k">Autoridad de giro</span><span class="v" id="taut">—</span></div>
+              <div class="stat-row"><span class="k">Escala mínima</span><span class="v" id="temi">—</span></div>
+              <div class="stat-row"><span class="k">Cámara</span><span class="pill" id="pillCamara"><span>—</span></span></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Menu inferior: cada pagina agrupa mandos que no se influyen con
+             los de las otras. Los nombres internos se quedan (data-panel,
+             #panelControl) porque los lee main.js. -->
+        <nav class="navinf" aria-label="Secciones">
+          <div class="navinf-pildora" id="segPanel" role="tablist">
+            <button class="on" data-panel="control" role="tab" aria-selected="true"><svg class="ico" aria-hidden="true"><use href="#i-robots-on"/></svg><span>Robots</span></button>
+            <button data-panel="obstaculos" role="tab" aria-selected="false"><svg class="ico" aria-hidden="true"><use href="#i-obstaculos"/></svg><span>Obstáculos</span></button>
+            <button data-panel="telemetria" role="tab" aria-selected="false"><svg class="ico" aria-hidden="true"><use href="#i-telemetria"/></svg><span>Telemetría</span></button>
+          </div>
+          <button type="button" class="navinf-mas" id="bAjustes" aria-label="Ajustes rápidos" title="Ajustes rápidos"><svg class="ico" aria-hidden="true"><use href="#i-ajustes"/></svg></button>
+        </nav>
+
+        <!-- Ajustes rapidos: lo que vale para los TRES robots y se toca poco.
+             Hoja que sube desde abajo dentro del panel; la cancha sigue a la vista. -->
+        <div class="hoja-capa" id="hojaAjustes" hidden>
+          <div class="hoja-velo" data-cerrar></div>
+          <section class="hoja" role="dialog" aria-modal="true" aria-labelledby="tAjustes">
+            <header class="hoja-cab">
+              <h2 id="tAjustes">Ajustes rápidos</h2>
+              <button type="button" class="btn-cerrar" data-cerrar aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
+            </header>
+            <div class="hoja-cuerpo">
+              <!-- Hasta donde apretar antes de dar el punto por bueno: el
+                   criterio de parada, uno para los tres. No bajan a cero a
+                   proposito: con tolerancia 0 el robot no para nunca, se queda
+                   zumbando alrededor del punto. -->
+              <section class="w" title="Criterio de parada, común a los 3 robots">
+                <div class="w-cab">
+                  <h3 class="w-tit">Error permitido</h3>
+                  <span class="desp-resumen" id="tolResumen">30 px · 5°</span>
+                </div>
+                <div class="tol-group">
+                  <label class="tol">
+                    <span>Llegada</span>
+                    <input type="range" id="sTolPos" min="10" max="40" step="1" value="30">
+                    <b id="vTolPos">30 px</b>
+                  </label>
+                  <label class="tol">
+                    <span>Rumbo</span>
+                    <input type="range" id="sTolAng" min="1" max="15" step="1" value="5">
+                    <b id="vTolAng">5°</b>
+                  </label>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- three.js vendorizado (r170) para la vista 3D. El mapa de imports tiene
+     que ir antes de cualquier modulo; escena3d.js se pide con import() solo
+     al abrir la vista 3D. -->
+<script type="importmap">
+  { "imports": {
+      "three": "/vendor/three/three.module.min.js",
+      "three/addons/": "/vendor/three/addons/"
+  } }
+</script>
+<script src="js/config.js"></script>
+<script src="js/control.js"></script>
+<script src="js/canvas.js"></script>
+<script src="js/graficas.js"></script>
+<script src="js/formacion.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
